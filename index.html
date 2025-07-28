@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>钉钉多群组定时提醒系统</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+            --dark-color: #343a40;
+            --light-color: #f8f9fa;
+        }
+
+        body {
+            background-color: #f5f5f5;
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom: 3px solid rgba(255,255,255,0.1);
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            color: white !important;
+        }
+
+        .sidebar {
+            height: calc(100vh - 76px);
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .group-item {
+            padding: 12px 20px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .group-item:hover {
+            background-color: #f8f9fa;
+            transform: translateX(5px);
+        }
+
+        .group-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-left: 4px solid #fff;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-running { background-color: #28a745; }
+        .status-paused { background-color: #ffc107; }
+        .status-stopped { background-color: #dc3545; }
+        .status-draft { background-color: #6c757d; }
+
+        .main-content {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+            margin: 20px;
+            padding: 30px;
+            min-height: calc(100vh - 140px);
+        }
+
+        .card {
+            border: none;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 20px;
+            padding: 8px 20px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .file-upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            background: #fafafa;
+        }
+
+        .file-upload-area.dragover {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+
+        .resource-monitor {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .progress {
+            height: 8px;
+            border-radius: 4px;
+        }
+
+        .table th {
+            background-color: #f8f9fa;
+            border-top: none;
+            color: #495057;
+            font-weight: 600;
+        }
+
+        .badge {
+            border-radius: 15px;
+            padding: 5px 12px;
+        }
+
+        .modal-content {
+            border-radius: 15px;
+            border: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0;
+        }
+
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+
+        .alert {
+            border-radius: 10px;
+            border: none;
+        }
+
+        .loading-spinner {
+            display: none;
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1050;
+        }
+
+        .btn-group-sm > .btn {
+            border-radius: 15px;
+        }
+
+        .schedule-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .schedule-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-left: 4px solid #007bff;
+        }
+
+        .schedule-item.sent {
+            opacity: 0.6;
+            border-left-color: #28a745;
+        }
+
+        .user-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                height: auto;
+                position: relative;
+            }
+            
+            .main-content {
+                margin: 10px;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-bell"></i> 钉钉提醒系统
+            </a>
+            <div class="navbar-nav ms-auto">
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
+                        <div class="user-avatar d-inline-flex me-2">A</div>
+                        <span id="currentUser">管理员</span>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="showUserProfile()"><i class="fas fa-user"></i> 个人中心</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> 退出登录</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- 侧边栏 -->
+            <div class="col-lg-3 col-md-4 p-0">
+                <div class="sidebar">
+                    <!-- 群组控制面板 -->
+                    <div class="p-3 border-bottom">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="mb-0">群组管理</h6>
+                            <button class="btn btn-sm btn-primary" onclick="showAddGroupModal()">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        <div class="btn-group w-100 mb-3" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-success" onclick="batchOperation('start')">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-warning" onclick="batchOperation('pause')">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="batchOperation('stop')">
+                                <i class="fas fa-stop"></i>
+                            </button>
+                        </div>
+                        <input type="text" class="form-control form-control-sm" placeholder="搜索群组..." 
+                               onkeyup="filterGroups(this.value)">
+                    </div>
+
+                    <!-- 群组列表 -->
+                    <div id="groupList">
+                        <!-- 群组项将动态加载 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主内容区 -->
+            <div class="col-lg-9 col-md-8">
+                <div class="main-content" id="mainContent">
+                    <!-- 系统概览 -->
+                    <div id="systemOverview">
+                        <h2 class="mb-4">系统概览</h2>
+                        
+                        <!-- 资源监控 -->
+                        <div class="resource-monitor">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <h6>运行群组</h6>
+                                    <h3 id="runningGroups">0</h3>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>内存使用</h6>
+                                    <h3 id="memoryUsage">128MB</h3>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>今日提醒</h6>
+                                    <h3 id="todayReminders">0</h3>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>系统状态</h6>
+                                    <h3><span class="badge bg-success">正常</span></h3>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 快速操作 -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-upload fa-3x text-primary mb-3"></i>
+                                        <h5>临时计划上传</h5>
+                                        <p class="text-muted">上传临时Excel文件，支持立即启动</p>
+                                        <button class="btn btn-primary" onclick="showTempUploadModal()">上传文件</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-cogs fa-3x text-info mb-3"></i>
+                                        <h5>系统设置</h5>
+                                        <p class="text-muted">配置系统参数和全局设置</p>
+                                        <button class="btn btn-info" onclick="showSystemSettings()">打开设置</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 最近活动 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">最近活动</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="recentActivity">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="status-indicator status-running me-2"></span>
+                                        <span>测试群组 已启动</span>
+                                        <small class="text-muted ms-auto">刚刚</small>
+                                    </div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="status-indicator status-paused me-2"></span>
+                                        <span>开发群组 已暂停</span>
+                                        <small class="text-muted ms-auto">2分钟前</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 群组详情（动态加载） -->
+                    <div id="groupDetail" style="display: none;">
+                        <!-- 群组详情内容 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加群组模态框 -->
+    <div class="modal fade" id="addGroupModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加新群组</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addGroupForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">群组名称 *</label>
+                                    <input type="text" class="form-control" name="groupName" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">群组状态</label>
+                                    <select class="form-select" name="status">
+                                        <option value="draft">草稿</option>
+                                        <option value="running">运行中</option>
+                                        <option value="paused">暂停</option>
+                                        <option value="stopped">停用</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">钉钉Webhook地址 *</label>
+                            <input type="url" class="form-control" name="webhookUrl" required>
+                            <div class="form-text">请输入钉钉群机器人的Webhook地址</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">描述</label>
+                            <textarea class="form-control" name="description" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">星期工作表映射</label>
+                            <div class="row">
+                                <div class="col-6 col-md-4 mb-2">
+                                    <label class="form-label small">周一</label>
+                                    <input type="text" class="form-control form-control-sm" name="monday" value="子表1">
+                                </div>
+                                <div class="col-6 col-md-4 mb-2">
+                                    <label class="form-label small">周二</label>
+                                    <input type="text" class="form-control form-control-sm" name="tuesday" value="子表1">
+                                </div>
+                                <div class="col-6 col-md-4 mb-2">
+                                    <label class="form-label small">周三</label>
+                                    <input type="text" class="form-control form-control-sm" name="wednesday" value="子表1">
+                                </div>
+                                <div class="col-6 col-md-4 mb-2">
+                                    <label class="form-label small">周四</label>
+                                    <input type="text" class="form-control form-control-sm" name="thursday" value="子表1">
+                                </div>
+                                <div class="col-6 col-md-4 mb-2">
+                                    <label class="form-label small">周五</label>
+                                    <input type="text" class="form-control form-control-sm" name="friday" value="子表2">
+                                </div>
+                                <div class="col-6 col-md-4 mb-2">
+                                    <label class="form-label small">周六</label>
+                                    <input type="text" class="form-control form-control-sm" name="saturday" value="子表5">
+                                </div>
+                                <div class="col-6 col-md-4 mb-2">
+                                    <label class="form-label small">周日</label>
+                                    <input type="text" class="form-control form-control-sm" name="sunday" value="子表5">
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveGroup()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 临时文件上传模态框 -->
+    <div class="modal fade" id="tempUploadModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">临时计划上传</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">选择群组</label>
+                        <select class="form-select" id="tempGroupSelect">
+                            <option value="">请选择群组</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">启动模式</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="startMode" id="immediateStart" value="immediate" checked>
+                            <label class="form-check-label" for="immediateStart">
+                                立即启动（上传后立即生效，应用智能时间过滤）
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="startMode" id="scheduledStart" value="scheduled">
+                            <label class="form-check-label" for="scheduledStart">
+                                定时启动（次日02:00生效）
+                            </label>
+                        </div>
+                    </div>
+                    <div class="file-upload-area" id="tempFileUpload">
+                        <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                        <p>拖拽Excel文件到此处或点击选择文件</p>
+                        <input type="file" class="d-none" id="tempFileInput" accept=".xlsx,.xls">
+                        <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('tempFileInput').click()">
+                            选择文件
+                        </button>
+                    </div>
+                    <div id="tempFilePreview" style="display: none;" class="mt-3">
+                        <div class="alert alert-info">
+                            <i class="fas fa-file-excel"></i>
+                            <span id="tempFileName"></span>
+                            <button type="button" class="btn btn-sm btn-outline-danger float-end" onclick="clearTempFile()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="uploadTempFile()" disabled id="uploadTempBtn">
+                        上传并启动
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 容器 -->
+    <div class="toast-container"></div>
+
+    <!-- JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 全局变量
+        let currentUser = { id: 1, name: '管理员', role: 'admin' };
+        let groups = [];
+        let currentGroup = null;
+        let systemConfig = {
+            maxRunningGroups: 10,
+            maxDailyReminders: 200,
+            autoRefreshInterval: 30000
+        };
+
+        // 初始化系统
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeSystem();
+            loadGroups();
+            startAutoRefresh();
+            setupFileUpload();
+        });
+
+        // 系统初始化
+        function initializeSystem() {
+            // 模拟登录用户数据
+            document.getElementById('currentUser').textContent = currentUser.name;
+            
+            // 更新系统状态
+            updateSystemStats();
+        }
+
+        // 加载群组列表
+        function loadGroups() {
+            // 模拟群组数据
+            groups = [
+                {
+                    id: 1,
+                    name: '测试群组',
+                    status: 'running',
+                    webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=xxx',
+                    description: '用于测试的群组',
+                    remindersToday: 5,
+                    lastActive: new Date(),
+                    ownerId: 1,
+                    weekMapping: {
+                        monday: '子表1', tuesday: '子表1', wednesday: '子表1', thursday: '子表1',
+                        friday: '子表2', saturday: '子表5', sunday: '子表5'
+                    }
+                },
+                {
+                    id: 2,
+                    name: '开发群组',
+                    status: 'paused',
+                    webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=yyy',
+                    description: '开发团队专用群组',
+                    remindersToday: 12,
+                    lastActive: new Date(Date.now() - 120000),
+                    ownerId: 1,
+                    weekMapping: {
+                        monday: '子表1', tuesday: '子表1', wednesday: '子表1', thursday: '子表1',
+                        friday: '子表2', saturday: '子表5', sunday: '子表5'
+                    }
+                },
+                {
+                    id: 3,
+                    name: '产品群组',
+                    status: 'stopped',
+                    webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=zzz',
+                    description: '产品团队群组',
+                    remindersToday: 0,
+                    lastActive: new Date(Date.now() - 3600000),
+                    ownerId: 1,
+                    weekMapping: {
+                        monday: '子表1', tuesday: '子表1', wednesday: '子表1', thursday: '子表1',
+                        friday: '子表2', saturday: '子表5', sunday: '子表5'
+                    }
+                }
+            ];
+
+            renderGroupList();
+            updateSystemStats();
+        }
+
+        // 渲染群组列表
+        function renderGroupList() {
+            const groupList = document.getElementById('groupList');
+            groupList.innerHTML = '';
+
+            groups.forEach(group => {
+                const groupItem = document.createElement('div');
+                groupItem.className = 'group-item';
+                groupItem.onclick = () => selectGroup(group.id);
+                
+                const statusClass = `status-${group.status}`;
+                const statusText = getStatusText(group.status);
+                
+                groupItem.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="status-indicator ${statusClass}"></span>
+                            <strong>${group.name}</strong>
+                        </div>
+                        <small class="text-muted">${group.remindersToday}</small>
+                    </div>
+                    <div class="mt-1">
+                        <small class="text-muted">${statusText}</small>
+                    </div>
+                `;
+                
+                groupList.appendChild(groupItem);
+            });
+        }
+
+        // 选择群组
+        function selectGroup(groupId) {
+            currentGroup = groups.find(g => g.id === groupId);
+            if (!currentGroup) return;
+
+            // 更新UI状态
+            document.querySelectorAll('.group-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // 显示群组详情
+            showGroupDetail();
+        }
+
+        // 显示群组详情
+        function showGroupDetail() {
+            document.getElementById('systemOverview').style.display = 'none';
+            document.getElementById('groupDetail').style.display = 'block';
+            
+            const groupDetail = document.getElementById('groupDetail');
+            groupDetail.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2>
+                            <span class="status-indicator status-${currentGroup.status}"></span>
+                            ${currentGroup.name}
+                        </h2>
+                        <p class="text-muted mb-0">${currentGroup.description}</p>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-outline-secondary" onclick="showSystemOverview()">
+                            <i class="fas fa-arrow-left"></i> 返回
+                        </button>
+                        <button class="btn btn-success ${currentGroup.status === 'running' ? 'disabled' : ''}" 
+                                onclick="changeGroupStatus(${currentGroup.id}, 'running')">
+                            <i class="fas fa-play"></i> 启动
+                        </button>
+                        <button class="btn btn-warning ${currentGroup.status === 'paused' ? 'disabled' : ''}" 
+                                onclick="changeGroupStatus(${currentGroup.id}, 'paused')">
+                            <i class="fas fa-pause"></i> 暂停
+                        </button>
+                        <button class="btn btn-danger ${currentGroup.status === 'stopped' ? 'disabled' : ''}" 
+                                onclick="changeGroupStatus(${currentGroup.id}, 'stopped')">
+                            <i class="fas fa-stop"></i> 停用
+                        </button>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h4 class="text-primary">${currentGroup.remindersToday}</h4>
+                                <p class="mb-0">今日提醒</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h4 class="text-success">${getStatusText(currentGroup.status)}</h4>
+                                <p class="mb-0">运行状态</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h4 class="text-info">${formatTime(currentGroup.lastActive)}</h4>
+                                <p class="mb-0">最后活动</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <button class="btn btn-primary btn-sm" onclick="testWebhook(${currentGroup.id})">
+                                    <i class="fas fa-paper-plane"></i> 测试发送
+                                </button>
+                                <p class="mb-0 mt-1">消息测试</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">群组配置</h5>
+                                <button class="btn btn-sm btn-primary" onclick="editGroupConfig(${currentGroup.id})">
+                                    <i class="fas fa-edit"></i> 编辑
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label"><strong>Webhook地址</strong></label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" value="${maskWebhook(currentGroup.webhookUrl)}" readonly>
+                                        <button class="btn btn-outline-secondary" onclick="copyWebhook(${currentGroup.id})">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label"><strong>星期工作表映射</strong></label>
+                                    <div class="row">
+                                        <div class="col-6 mb-2">
+                                            <small>周一：${currentGroup.weekMapping.monday}</small>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <small>周二：${currentGroup.weekMapping.tuesday}</small>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <small>周三：${currentGroup.weekMapping.wednesday}</small>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <small>周四：${currentGroup.weekMapping.thursday}</small>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <small>周五：${currentGroup.weekMapping.friday}</small>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <small>周六：${currentGroup.weekMapping.saturday}</small>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <small>周日：${currentGroup.weekMapping.sunday}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">文件管理</h5>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-primary" onclick="uploadRegularFile(${currentGroup.id})">
+                                        <i class="fas fa-upload"></i> 上传
+                                    </button>
+                                    <button class="btn btn-info" onclick="reloadSchedule(${currentGroup.id})">
+                                        <i class="fas fa-sync"></i> 重载
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label"><strong>当前文件</strong></label>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-file-excel me-2"></i>
+                                        提醒计划_20250128.xlsx
+                                        <small class="text-muted d-block">上传时间: 2025-01-28 09:30</small>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label"><strong>临时文件</strong></label>
+                                    <div id="tempFileStatus">
+                                        <div class="text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            暂无临时文件
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">今日提醒计划</h5>
+                                <small class="text-muted">当前时间: ${new Date().toLocaleString()}</small>
+                            </div>
+                            <div class="card-body">
+                                <div class="schedule-list" id="scheduleList">
+                                    ${generateTodaySchedule()}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 生成今日提醒计划
+        function generateTodaySchedule() {
+            const now = new Date();
+            const currentTime = now.getHours() * 60 + now.getMinutes();
+            
+            // 模拟今日提醒数据
+            const todaySchedule = [
+                { time: '09:00', message: '早会提醒：请准时参加9点的团队晨会', sent: true },
+                { time: '10:30', message: '项目进度检查：请更新项目进度状态', sent: true },
+                { time: '14:00', message: '午休结束提醒：下午工作开始啦！', sent: false },
+                { time: '16:30', message: '代码review提醒：请完成今日代码审查', sent: false },
+                { time: '18:00', message: '下班提醒：记得保存工作内容', sent: false }
+            ];
+
+            return todaySchedule.map(item => {
+                const [hours, minutes] = item.time.split(':').map(Number);
+                const itemTime = hours * 60 + minutes;
+                const isSent = itemTime <= currentTime;
+                const statusClass = isSent ? 'sent' : '';
+                const statusIcon = isSent ? 'fa-check-circle text-success' : 'fa-clock text-warning';
+                
+                return `
+                    <div class="schedule-item ${statusClass}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="fas ${statusIcon} me-2"></i>
+                                    <strong>${item.time}</strong>
+                                    <span class="badge bg-${isSent ? 'success' : 'warning'} ms-2">
+                                        ${isSent ? '已发送' : '待发送'}
+                                    </span>
+                                </div>
+                                <p class="mb-0">${item.message}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 显示系统概览
+        function showSystemOverview() {
+            document.getElementById('systemOverview').style.display = 'block';
+            document.getElementById('groupDetail').style.display = 'none';
+            currentGroup = null;
+            
+            // 清除群组选择状态
+            document.querySelectorAll('.group-item').forEach(item => {
+                item.classList.remove('active');
+            });
+        }
+
+        // 更新系统统计
+        function updateSystemStats() {
+            const runningGroups = groups.filter(g => g.status === 'running').length;
+            const todayReminders = groups.reduce((sum, g) => sum + g.remindersToday, 0);
+            const memoryUsage = 128 + runningGroups * 20; // 基础128MB + 每个运行群组20MB
+            
+            document.getElementById('runningGroups').textContent = runningGroups;
+            document.getElementById('memoryUsage').textContent = `${memoryUsage}MB`;
+            document.getElementById('todayReminders').textContent = todayReminders;
+        }
+
+        // 改变群组状态
+        function changeGroupStatus(groupId, newStatus) {
+            const group = groups.find(g => g.id === groupId);
+            if (!group) return;
+
+            const oldStatus = group.status;
+            group.status = newStatus;
+            group.lastActive = new Date();
+
+            // 更新UI
+            renderGroupList();
+            updateSystemStats();
+            
+            if (currentGroup && currentGroup.id === groupId) {
+                showGroupDetail();
+            }
+
+            // 显示通知
+            showToast(`群组 "${group.name}" 状态已从 ${getStatusText(oldStatus)} 更改为 ${getStatusText(newStatus)}`, 'success');
+        }
+
+        // 批量操作
+        function batchOperation(operation) {
+            const selectedGroups = groups.filter(g => g.status !== operation);
+            
+            if (selectedGroups.length === 0) {
+                showToast('没有可执行操作的群组', 'warning');
+                return;
+            }
+
+            if (confirm(`确定要${getOperationText(operation)} ${selectedGroups.length} 个群组吗？`)) {
+                selectedGroups.forEach(group => {
+                    group.status = operation;
+                    group.lastActive = new Date();
+                });
+
+                renderGroupList();
+                updateSystemStats();
+                showToast(`批量${getOperationText(operation)}完成，影响 ${selectedGroups.length} 个群组`, 'success');
+            }
+        }
+
+        // 显示添加群组模态框
+        function showAddGroupModal() {
+            new bootstrap.Modal(document.getElementById('addGroupModal')).show();
+        }
+
+        // 保存群组
+        function saveGroup() {
+            const form = document.getElementById('addGroupForm');
+            const formData = new FormData(form);
+            
+            // 验证表单
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const newGroup = {
+                id: Date.now(), // 简单的ID生成
+                name: formData.get('groupName'),
+                status: formData.get('status'),
+                webhookUrl: formData.get('webhookUrl'),
+                description: formData.get('description') || '',
+                remindersToday: 0,
+                lastActive: new Date(),
+                ownerId: currentUser.id,
+                weekMapping: {
+                    monday: formData.get('monday'),
+                    tuesday: formData.get('tuesday'),
+                    wednesday: formData.get('wednesday'),
+                    thursday: formData.get('thursday'),
+                    friday: formData.get('friday'),
+                    saturday: formData.get('saturday'),
+                    sunday: formData.get('sunday')
+                }
+            };
+
+            groups.push(newGroup);
+            renderGroupList();
+            updateSystemStats();
+            
+            // 关闭模态框并重置表单
+            bootstrap.Modal.getInstance(document.getElementById('addGroupModal')).hide();
+            form.reset();
+            
+            showToast(`群组 "${newGroup.name}" 创建成功`, 'success');
+        }
+
+        // 显示临时文件上传模态框
+        function showTempUploadModal() {
+            // 填充群组选择器
+            const select = document.getElementById('tempGroupSelect');
+            select.innerHTML = '<option value="">请选择群组</option>';
+            
+            groups.forEach(group => {
+                const option = document.createElement('option');
+                option.value = group.id;
+                option.textContent = group.name;
+                select.appendChild(option);
+            });
+
+            new bootstrap.Modal(document.getElementById('tempUploadModal')).show();
+        }
+
+        // 设置文件上传
+        function setupFileUpload() {
+            const tempFileInput = document.getElementById('tempFileInput');
+            const tempFileUpload = document.getElementById('tempFileUpload');
+            const tempFilePreview = document.getElementById('tempFilePreview');
+            const tempFileName = document.getElementById('tempFileName');
+            const uploadBtn = document.getElementById('uploadTempBtn');
+
+            // 文件选择处理
+            tempFileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    handleTempFile(file);
+                }
+            });
+
+            // 拖拽处理
+            tempFileUpload.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.classList.add('dragover');
+            });
+
+            tempFileUpload.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.classList.remove('dragover');
+            });
+
+            tempFileUpload.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    handleTempFile(file);
+                }
+            });
+
+            function handleTempFile(file) {
+                // 验证文件类型
+                if (!file.name.match(/\.(xlsx|xls)$/)) {
+                    showToast('请选择Excel文件(.xlsx或.xls)', 'error');
+                    return;
+                }
+
+                // 验证文件大小 (16MB)
+                if (file.size > 16 * 1024 * 1024) {
+                    showToast('文件大小不能超过16MB', 'error');
+                    return;
+                }
+
+                tempFileName.textContent = file.name;
+                tempFilePreview.style.display = 'block';
+                tempFileUpload.style.display = 'none';
+                updateUploadButton();
+            }
+        }
+
+        // 更新上传按钮状态
+        function updateUploadButton() {
+            const groupSelected = document.getElementById('tempGroupSelect').value;
+            const fileSelected = document.getElementById('tempFilePreview').style.display !== 'none';
+            const uploadBtn = document.getElementById('uploadTempBtn');
+            
+            uploadBtn.disabled = !(groupSelected && fileSelected);
+        }
+
+        // 清除临时文件
+        function clearTempFile() {
+            document.getElementById('tempFilePreview').style.display = 'none';
+            document.getElementById('tempFileUpload').style.display = 'block';
+            document.getElementById('tempFileInput').value = '';
+            updateUploadButton();
+        }
+
+        // 上传临时文件
+        function uploadTempFile() {
+            const groupId = document.getElementById('tempGroupSelect').value;
+            const startMode = document.querySelector('input[name="startMode"]:checked').value;
+            const file = document.getElementById('tempFileInput').files[0];
+
+            if (!groupId || !file) {
+                showToast('请选择群组和文件', 'error');
+                return;
+            }
+
+            const group = groups.find(g => g.id == groupId);
+            if (!group) {
+                showToast('群组不存在', 'error');
+                return;
+            }
+
+            // 模拟文件上传和处理
+            showLoading(true);
+            
+            setTimeout(() => {
+                showLoading(false);
+                
+                if (startMode === 'immediate') {
+                    // 立即启动模式
+                    showToast(`临时计划已上传并立即生效，群组: ${group.name}`, 'success');
+                    
+                    // 应用智能时间过滤（跳过已过时间）
+                    const now = new Date();
+                    const filteredCount = Math.floor(Math.random() * 5) + 1; // 模拟过滤的提醒数量
+                    showToast(`智能时间过滤已应用，跳过 ${filteredCount} 个已过时提醒`, 'info');
+                } else {
+                    // 定时启动模式
+                    showToast(`临时计划已上传，将在次日02:00生效，群组: ${group.name}`, 'success');
+                }
+
+                // 关闭模态框
+                bootstrap.Modal.getInstance(document.getElementById('tempUploadModal')).hide();
+                clearTempFile();
+            }, 2000);
+        }
+
+        // 测试Webhook
+        function testWebhook(groupId) {
+            const group = groups.find(g => g.id === groupId);
+            if (!group) return;
+
+            showLoading(true);
+            
+            setTimeout(() => {
+                showLoading(false);
+                showToast(`测试消息已发送到群组: ${group.name}`, 'success');
+            }, 1500);
+        }
+
+        // 重新加载计划
+        function reloadSchedule(groupId) {
+            const group = groups.find(g => g.id === groupId);
+            if (!group) return;
+
+            if (confirm('重新加载将应用智能时间过滤，跳过已过时提醒。确定继续吗？')) {
+                showLoading(true);
+                
+                setTimeout(() => {
+                    showLoading(false);
+                    const filteredCount = Math.floor(Math.random() * 3) + 1;
+                    showToast(`计划重新加载完成，跳过 ${filteredCount} 个已过时提醒`, 'success');
+                    
+                    // 刷新当前群组详情
+                    if (currentGroup && currentGroup.id === groupId) {
+                        showGroupDetail();
+                    }
+                }, 1500);
+            }
+        }
+
+        // 群组列表过滤
+        function filterGroups(searchTerm) {
+            const groupItems = document.querySelectorAll('.group-item');
+            
+            groupItems.forEach(item => {
+                const groupName = item.querySelector('strong').textContent.toLowerCase();
+                if (groupName.includes(searchTerm.toLowerCase())) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // 显示用户配置
+        function showUserProfile() {
+            alert('个人中心功能开发中...');
+        }
+
+        // 显示系统设置
+        function showSystemSettings() {
+            alert('系统设置功能开发中...');
+        }
+
+        // 退出登录
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                // 这里应该清除用户会话并跳转到登录页面
+                alert('退出登录功能开发中...');
+            }
+        }
+
+        // 自动刷新
+        function startAutoRefresh() {
+            setInterval(() => {
+                updateSystemStats();
+                // 这里可以添加其他需要定期刷新的数据
+            }, systemConfig.autoRefreshInterval);
+        }
+
+        // 工具函数
+        function getStatusText(status) {
+            const statusMap = {
+                'running': '运行中',
+                'paused': '已暂停',
+                'stopped': '已停用',
+                'draft': '草稿'
+            };
+            return statusMap[status] || status;
+        }
+
+        function getOperationText(operation) {
+            const operationMap = {
+                'start': '启动',
+                'pause': '暂停',
+                'stop': '停用'
+            };
+            return operationMap[operation] || operation;
+        }
+
+        function maskWebhook(url) {
+            if (!url) return '';
+            const parts = url.split('access_token=');
+            if (parts.length > 1) {
+                return parts[0] + 'access_token=***';
+            }
+            return url;
+        }
+
+        function formatTime(date) {
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return '刚刚';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+            return `${Math.floor(diff / 86400000)}天前`;
+        }
+
+        function showToast(message, type = 'info') {
+            const toastContainer = document.querySelector('.toast-container');
+            const toastId = 'toast-' + Date.now();
+            
+            const bgClass = {
+                'success': 'bg-success',
+                'error': 'bg-danger',
+                'warning': 'bg-warning',
+                'info': 'bg-info'
+            }[type] || 'bg-info';
+
+            const toast = document.createElement('div');
+            toast.id = toastId;
+            toast.className = 'toast';
+            toast.innerHTML = `
+                <div class="toast-header ${bgClass} text-white">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong class="me-auto">系统通知</strong>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            `;
+
+            toastContainer.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+
+            // 自动清理
+            setTimeout(() => {
+                if (document.getElementById(toastId)) {
+                    toastContainer.removeChild(toast);
+                }
+            }, 5000);
+        }
+
+        function showLoading(show) {
+            // 这里可以显示/隐藏加载动画
+            if (show) {
+                document.body.style.cursor = 'wait';
+            } else {
+                document.body.style.cursor = 'default';
+            }
+        }
+
+        // 监听群组选择变化
+        document.getElementById('tempGroupSelect').addEventListener('change', updateUploadButton);
+    </script>
+</body>
+</html>
