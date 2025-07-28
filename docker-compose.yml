@@ -1,0 +1,492 @@
+# docker-compose.yml - Docker部署配置
+version: '3.8'
+
+services:
+  # 主应用
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://postgres:password@db:5432/dingtalk_reminder
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    networks:
+      - dingtalk-network
+
+  # PostgreSQL数据库
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=dingtalk_reminder
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - dingtalk-network
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - dingtalk-network
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+      - ./static:/var/www/static
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - dingtalk-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  dingtalk-network:
+    driver: bridge
+
+---
+
+# Dockerfile - 应用容器构建
+FROM python:3.11-slim
+
+# 设置工作目录
+WORKDIR /app
+
+# 设置环境变量
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=app.py
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖文件
+COPY requirements.txt .
+
+# 安装Python依赖
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY . .
+
+# 创建必要目录
+RUN mkdir -p uploads logs
+
+# 设置权限
+RUN chmod +x run.sh
+
+# 暴露端口
+EXPOSE 5000
+
+# 启动命令
+CMD ["./run.sh"]
+
+---
+
+# run.sh - 启动脚本
+#!/bin/bash
+
+# 等待数据库启动
+echo "Waiting for database..."
+while ! nc -z db 5432; do
+  sleep 1
+done
+echo "Database is ready!"
+
+# 初始化数据库
+python -c "
+from app import app, db
+with app.app_context():
+    db.create_all()
+    print('Database initialized')
+"
+
+# 启动应用
+if [ "$FLASK_ENV" = "production" ]; then
+    echo "Starting production server..."
+    gunicorn --bind 0.0.0.0:5000 --workers 4 --threads 2 --timeout 30 --keep-alive 2 --max-requests 1000 --max-requests-jitter 50 app:app
+else
+    echo "Starting development server..."
+    python app.py
+fi
+
+---
+
+# nginx.conf - Nginx配置
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream app {
+        server app:5000;
+    }
+
+    # 限制请求大小
+    client_max_body_size 16M;
+
+    server {
+        listen 80;
+        server_name _;
+
+        # HTTP重定向到HTTPS
+        return 301 https://$server_name$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name _;
+
+        # SSL配置
+        ssl_certificate /etc/nginx/ssl/cert.pem;
+        ssl_certificate_key /etc/nginx/ssl/key.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+
+        # 安全头
+        add_header X-Frame-Options SAMEORIGIN;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Strict-Transport-Security "max-age=31536000" always;
+
+        # Gzip压缩
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+
+        # 静态文件
+        location /static/ {
+            alias /var/www/static/;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        # API代理
+        location /api/ {
+            proxy_pass http://app;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 30s;
+            proxy_read_timeout 30s;
+        }
+
+        # 前端应用
+        location / {
+            proxy_pass http://app;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+
+---
+
+# .env.example - 环境变量示例
+# 复制此文件为.env并填入实际值
+
+# 基础配置
+SECRET_KEY=your-super-secret-key-change-in-production
+JWT_SECRET_KEY=your-jwt-secret-key-change-in-production
+ENCRYPTION_KEY=your-encryption-key-here
+
+# Flask配置
+FLASK_ENV=production
+FLASK_APP=app.py
+
+# 数据库配置
+DATABASE_URL=postgresql://postgres:password@localhost:5432/dingtalk_reminder
+
+# Redis配置（可选）
+REDIS_URL=redis://localhost:6379/0
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_FILE=logs/app.log
+
+# 服务器配置
+HOST=0.0.0.0
+PORT=5000
+
+# 文件上传配置
+MAX_CONTENT_LENGTH=16777216
+UPLOAD_FOLDER=uploads
+
+# 系统限制配置
+DEFAULT_MAX_GROUPS=10
+DEFAULT_MAX_RUNNING_GROUPS=3
+DEFAULT_MAX_DAILY_REMINDERS=200
+
+---
+
+# gunicorn.conf.py - Gunicorn配置
+import os
+import multiprocessing
+
+# 服务器配置
+bind = f"0.0.0.0:{os.getenv('PORT', 5000)}"
+workers = multiprocessing.cpu_count() * 2 + 1
+worker_class = "sync"
+worker_connections = 1000
+max_requests = 1000
+max_requests_jitter = 50
+timeout = 30
+keepalive = 2
+
+# 日志配置
+accesslog = "logs/access.log"
+errorlog = "logs/error.log"
+loglevel = "info"
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+
+# 安全配置
+limit_request_line = 4094
+limit_request_fields = 100
+limit_request_field_size = 8190
+
+# 预加载应用
+preload_app = True
+
+# 进程管理
+daemon = False
+pidfile = "gunicorn.pid"
+user = None
+group = None
+
+# 重启配置
+max_requests = 1000
+max_requests_jitter = 100
+preload_app = True
+
+---
+
+# systemd/dingtalk-reminder.service - 系统服务配置
+[Unit]
+Description=DingTalk Reminder System
+After=network.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/dingtalk-reminder
+Environment=PATH=/opt/dingtalk-reminder/venv/bin
+ExecStart=/opt/dingtalk-reminder/venv/bin/gunicorn --config gunicorn.conf.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+---
+
+# deploy.sh - 部署脚本
+#!/bin/bash
+
+echo "开始部署钉钉提醒系统..."
+
+# 检查Docker是否安装
+if ! command -v docker &> /dev/null; then
+    echo "请先安装Docker"
+    exit 1
+fi
+
+if ! command -v docker-compose &> /dev/null; then
+    echo "请先安装Docker Compose"
+    exit 1
+fi
+
+# 创建必要目录
+mkdir -p uploads logs ssl static
+
+# 生成SSL证书（自签名，生产环境请使用真实证书）
+if [ ! -f ssl/cert.pem ]; then
+    echo "生成SSL证书..."
+    openssl req -x509 -newkey rsa:4096 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes \
+        -subj "/C=CN/ST=State/L=City/O=Organization/CN=localhost"
+fi
+
+# 设置权限
+chmod 600 ssl/key.pem
+chmod 644 ssl/cert.pem
+
+# 创建环境变量文件
+if [ ! -f .env ]; then
+    echo "创建环境变量文件..."
+    cp .env.example .env
+    echo "请编辑.env文件并填入实际配置值"
+fi
+
+# 构建并启动服务
+echo "构建Docker镜像..."
+docker-compose build
+
+echo "启动服务..."
+docker-compose up -d
+
+# 等待服务启动
+echo "等待服务启动..."
+sleep 10
+
+# 检查服务状态
+echo "检查服务状态..."
+docker-compose ps
+
+# 显示访问信息
+echo ""
+echo "部署完成！"
+echo "HTTP访问地址: http://localhost"
+echo "HTTPS访问地址: https://localhost"
+echo "API接口地址: https://localhost/api"
+echo ""
+echo "默认管理员账号:"
+echo "用户名: admin"
+echo "密码: admin123"
+echo ""
+echo "查看日志: docker-compose logs -f app"
+echo "停止服务: docker-compose down"
+
+---
+
+# init.sql - 数据库初始化脚本
+-- 创建数据库（如果不存在）
+CREATE DATABASE IF NOT EXISTS dingtalk_reminder;
+
+-- 设置字符集
+ALTER DATABASE dingtalk_reminder CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- 创建用户（如果需要）
+-- CREATE USER 'dingtalk_user'@'%' IDENTIFIED BY 'password';
+-- GRANT ALL PRIVILEGES ON dingtalk_reminder.* TO 'dingtalk_user'@'%';
+-- FLUSH PRIVILEGES;
+
+---
+
+# supervisord.conf - Supervisor配置（可选）
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:dingtalk-reminder]
+command=/app/venv/bin/gunicorn --config gunicorn.conf.py app:app
+directory=/app
+user=www-data
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/dingtalk-reminder.log
+environment=PATH="/app/venv/bin"
+
+[program:nginx]
+command=nginx -g "daemon off;"
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/nginx.log
+
+---
+
+# health_check.py - 健康检查脚本
+#!/usr/bin/env python3
+import requests
+import sys
+import json
+
+def check_health():
+    """检查应用健康状态"""
+    try:
+        # 检查API健康状态
+        response = requests.get('http://localhost:5000/api/health', timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ API服务正常: {data.get('status', 'unknown')}")
+        else:
+            print(f"✗ API服务异常: HTTP {response.status_code}")
+            return False
+            
+        # 检查数据库连接
+        response = requests.get('http://localhost:5000/api/system/stats', timeout=10)
+        
+        if response.status_code == 200:
+            print("✓ 数据库连接正常")
+        else:
+            print("✗ 数据库连接异常")
+            return False
+            
+        return True
+        
+    except requests.exceptions.RequestException as e:
+        print(f"✗ 健康检查失败: {e}")
+        return False
+
+if __name__ == '__main__':
+    if check_health():
+        print("所有服务运行正常")
+        sys.exit(0)
+    else:
+        print("服务存在问题")
+        sys.exit(1)
+
+# 添加到app.py中的健康检查端点
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """健康检查端点"""
+    try:
+        # 检查数据库连接
+        db.session.execute('SELECT 1')
+        
+        # 检查调度器状态
+        scheduler_running = scheduler.running if 'scheduler' in globals() else False
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'scheduler': 'running' if scheduler_running else 'stopped',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
