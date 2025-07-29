@@ -1,0 +1,18 @@
+# systemd/dingtalk-reminder.service - 系统服务配置
+[Unit]
+Description=DingTalk Reminder System
+After=network.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/dingtalk-reminder
+Environment=PATH=/opt/dingtalk-reminder/venv/bin
+ExecStart=/opt/dingtalk-reminder/venv/bin/gunicorn --config gunicorn.conf.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
